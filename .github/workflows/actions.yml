@@ -3,19 +3,54 @@ name: Reusable workflow example
 on:
   workflow_call:
     inputs:
-      username:
+      project_name:
         required: true
         type: string
     secrets:
-      token:
+      gce_sa_key:
+        required: true
+      project_id:
+        required: true
+      release_secrets:
         required: true
 
 jobs:
-  example_job:
-    name: Pass input and secrets to my-action
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
+    setup_build_publish_deploy:
+      runs-on: ubuntu-latest
+
+      steps:
+      - uses: google-github-actions/setup-gcloud@v0
         with:
-          username: ${{ inputs.username }}
-          token: ${{ secrets.token }}
+          version: '290.0.1'
+          service_account_key: ${{ secrets.gce_sa_key }}
+          project_id: ${{ secrets.project_id }}
+
+      # Configure Docker to use the gcloud command-line tool as a credential
+      # helper for authentication
+      - run: |-
+          gcloud --quiet auth configure-docker
+
+
+      - name: Checkout
+        uses: actions/checkout@v2
+      # Build the Docker image
+      - name: Build
+        run: |
+          echo '${{ secrets.RELEASES_SECRETS }}' >> config/releases.exs
+          echo '${{ secrets.QNA_ANSWERS }}' >> qna/answers.json
+          echo '${{ secrets.COURSES_ANSWERS }}' >> courses/answers.json
+          docker build --tag "gcr.io/duncan-openc2-plugfest/quadquiz:$GITHUB_SHA" .
+
+      # Push the Docker image to Google Container Registry
+      - name: Publish
+        run: |-
+          docker push "gcr.io/duncan-openc2-plugfest/quadquiz:$GITHUB_SHA"
+
+      - name: Deploy
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v0
+        with:
+          service: quadquiz-preview
+          region: us-east4
+          tag: "${{ github.ref_name }}"
+          image: "gcr.io/duncan-openc2-plugfest/quadquiz:${{ github.sha }}"
