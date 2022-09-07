@@ -9,17 +9,6 @@ on:
       project_name:
         required: true
         type: string
-      environment_name:
-        default: staging
-        required: false
-        type: string
-      environment_url:
-        required: false
-        type: string
-      project_name:
-        required: true
-        type: string
-
     secrets:
       gce_sa_key:
         required: true
